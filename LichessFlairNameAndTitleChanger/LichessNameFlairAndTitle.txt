@@ -4,4 +4,4 @@ empty for no change of val
 Player1:AJisland, ASM, AJisland, https://media.tenor.com/bmxESZp93QYAAAAM/cute-staring-cat.gif https://media1.tenor.com/m/Tce2yoJHW1MAAAAC/yay-henry.gif,
 Player2:SJisland, BM, SJisland, https://media1.tenor.com/m/Tce2yoJHW1MAAAAC/yay-henry.gif,
 Player3:KKisland, GM, KKisland, https://media.tenor.com/KMxrZ-A6ev4AAAAM/nice-smack.gif\
-Player4: Zhigalko_Sergei, SFP, SirtajLovesMe, https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExdWFucGl6a3Zja3dqcHliZ3VheGpsbnNoZHkzN280eXVsbmJiMDl4NCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/OTjlFt6m9KIPo4fJAI/giphy.webp
+Player4: Zhigalko_Sergei, SFP, SSSLovesMe, https://media3.giphy.com/media/v1.Y2lkPTc5MGI3NjExdWFucGl6a3Zja3dqcHliZ3VheGpsbnNoZHkzN280eXVsbmJiMDl4NCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/OTjlFt6m9KIPo4fJAI/giphy.webp
