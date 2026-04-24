@@ -1,26 +1,101 @@
 // ==UserScript==
 // @name         Lichess Dynamic Badge + Name + Flair (Final Stable)
 // @namespace    http://tampermonkey.net/
-// @version      27.9.2026
-// @description  Remote-controlled Lichess UI with fully safe parsing
+// @version      28.4.2026
+// @description  Remote-controlled Lichess UI driven by Supabase table data
 // @match        https://lichess.org/*
 // @updateURL    https://someoneofficial.github.io/LichessEdits/LichessFlairNameAndTitleChanger/LichessFlairNameTitleChange.js
 // @downloadURL  https://someoneofficial.github.io/LichessEdits/LichessFlairNameAndTitleChanger/LichessFlairNameTitleChange.js
 // @grant        GM_xmlhttpRequest
-// @connect      someoneofficial.github.io
+// @connect      wkhbvgqvafooneuwhppj.supabase.co
 // @run-at       document-idle
 // ==/UserScript==
 
 (function () {
     'use strict';
 
-    const BASE_URL =
-        'https://someoneofficial.github.io/LichessEdits/LichessFlairNameAndTitleChanger/LichessNameFlairAndTitle.txt';
+    const SUPABASE_URL = 'https://wkhbvgqvafooneuwhppj.supabase.co';
+    const SUPABASE_TABLE = 'LichessChangesDB';
+    const SUPABASE_ANON_KEY = 'REPLACE_WITH_YOUR_SUPABASE_PUBLISHABLE_OR_ANON_KEY';
+    const REFRESH_MS = 60000;
 
     let PLAYERS = [];
 
     function normalizeUser(value) {
-        return (value || '').trim().toLowerCase();
+        return String(value || '').trim().replace(/^@+/, '').toLowerCase();
+    }
+
+    function pickFirst(row, keys) {
+        for (const key of keys) {
+            if (!Object.prototype.hasOwnProperty.call(row, key)) continue;
+            const value = row[key];
+            if (value === null || value === undefined) continue;
+            return String(value).trim();
+        }
+        return '';
+    }
+
+    function sanitizeTitle(value) {
+        const title = String(value || '').trim();
+        if (!title) return '';
+        return title.toLowerCase() === 'title' ? '' : title;
+    }
+
+    function toBoolean(value, fallback = true) {
+        if (value === null || value === undefined) return fallback;
+        if (typeof value === 'boolean') return value;
+        if (typeof value === 'number') return value !== 0;
+        const normalized = String(value).trim().toLowerCase();
+        if (['0', 'false', 'no', 'off', 'disabled'].includes(normalized)) return false;
+        if (['1', 'true', 'yes', 'on', 'enabled'].includes(normalized)) return true;
+        return fallback;
+    }
+
+    function normalizePlayer(row) {
+        const sourceUser = pickFirst(row, [
+            'username',
+            'user',
+            'lichess_username',
+            'lichessUser',
+            'name'
+        ]);
+
+        const id = normalizeUser(sourceUser);
+        if (!id) return null;
+
+        const displayName = pickFirst(row, [
+            'display_name',
+            'displayName',
+            'custom_name',
+            'customName',
+            'shown_name',
+            'shownName',
+            'name'
+        ]);
+
+        const flair = pickFirst(row, [
+            'flair',
+            'flair_url',
+            'flairUrl',
+            'image_url',
+            'imageUrl',
+            'avatar_url',
+            'avatarUrl'
+        ]);
+
+        const enabled = toBoolean(
+            row.enabled ?? row.active ?? row.is_active ?? row.isActive,
+            true
+        );
+
+        return {
+            id,
+            name: sourceUser,
+            title: sanitizeTitle(row.title ?? row.badge ?? row.utitle),
+            displayName,
+            flair,
+            enabled
+        };
     }
 
     function extractUserFromHref(href) {
@@ -35,15 +110,12 @@
     }
 
     function resolveUserForElement(el) {
-        // Profile header uses span.user-link with data-href.
         const dataHrefUser = extractUserFromHref(el.getAttribute('data-href') || '');
         if (dataHrefUser) return dataHrefUser;
 
-        // Normal links use href.
         const hrefUser = extractUserFromHref(el.getAttribute('href') || '');
         if (hrefUser) return hrefUser;
 
-        // Fallback to data-username only when href does not expose a user.
         return normalizeUser(el.getAttribute('data-username'));
     }
 
@@ -56,82 +128,62 @@
         </span>`;
     }
 
-    // 🧠 SAFE PARSER (FIXED FLAIR + STRUCTURE)
-    function parseLine(line) {
-        const colonIndex = line.indexOf(':');
-        if (colonIndex === -1) return null;
-
-        const raw = line.slice(colonIndex + 1).trim();
-        if (!raw) return null;
-
-        const parts = raw.split(',').map(x => x.trim());
-
-        const name = parts[0] || '';
-        let title = parts[1] || '';
-        const displayName = parts[2] || '';
-
-        // 🧠 EVERYTHING AFTER INDEX 2 = FULL FLAIR (SAFE)
-        const flair = parts.slice(3).join(',').trim();
-
-        if (!name) return null;
-
-        return {
-            name,
-            id: name.toLowerCase(),
-            title,
-            displayName,
-            flair
-        };
-    }
-
     function loadData() {
         return new Promise((resolve) => {
-            const url = BASE_URL + '?t=' + Date.now();
+            if (!SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('REPLACE_WITH')) {
+                console.error('[Lichess Supabase] Missing SUPABASE_ANON_KEY in userscript settings.');
+                resolve();
+                return;
+            }
+
+            const url =
+                `${SUPABASE_URL}/rest/v1/${encodeURIComponent(SUPABASE_TABLE)}` +
+                '?select=*';
 
             GM_xmlhttpRequest({
                 method: 'GET',
-                url: url,
+                url,
+                headers: {
+                    apikey: SUPABASE_ANON_KEY,
+                    Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+                    Accept: 'application/json'
+                },
                 onload: function (response) {
                     try {
-                        const lines = response.responseText.split('\n');
-                        const parsed = [];
-
-                        for (let line of lines) {
-                            line = line.trim();
-
-                            // 🧠 HARD FILTERS (prevents "title" bug)
-                            if (!line.startsWith('Player')) continue;
-                            if (line.includes('name, title')) continue;
-                            if (!line.includes(':')) continue;
-
-                            const player = parseLine(line);
-                            if (!player) continue;
-
-                            // 🧠 TITLE SANITIZER (fixes "title" bug)
-                            const cleanTitle =
-                                (!player.title ||
-                                 player.title.toLowerCase() === 'title')
-                                    ? ''
-                                    : player.title;
-
-                            parsed.push({
-                                ...player,
-                                title: cleanTitle,
-                                badge: createBadge(cleanTitle)
-                            });
+                        if (response.status < 200 || response.status >= 300) {
+                            console.error(
+                                '[Lichess Supabase] Fetch failed',
+                                response.status,
+                                response.responseText
+                            );
+                            resolve();
+                            return;
                         }
 
-                        PLAYERS = parsed;
-                        console.log("Loaded players:", PLAYERS);
-                        resolve();
+                        const rows = JSON.parse(response.responseText);
+                        if (!Array.isArray(rows)) {
+                            console.error('[Lichess Supabase] Expected array response', rows);
+                            resolve();
+                            return;
+                        }
 
+                        PLAYERS = rows
+                            .map(normalizePlayer)
+                            .filter((player) => player && player.enabled)
+                            .map((player) => ({
+                                ...player,
+                                badge: createBadge(player.title)
+                            }));
+
+                        console.log('[Lichess Supabase] Loaded players:', PLAYERS.length);
+                        resolve();
                     } catch (e) {
-                        console.error("Parse error:", e);
+                        console.error('[Lichess Supabase] Parse error:', e);
                         resolve();
                     }
                 },
                 onerror: function (err) {
-                    console.error("Fetch failed:", err);
+                    console.error('[Lichess Supabase] Network error:', err);
                     resolve();
                 }
             });
@@ -190,17 +242,17 @@
     }
 
     function inject() {
-        if (!PLAYERS.length) return;
+        if (!PLAYERS.length) {
+            document.querySelectorAll('.user-link[data-injected-for]').forEach(clearInjected);
+            return;
+        }
 
         const playersById = new Map(PLAYERS.map((p) => [p.id, p]));
-        const elements = document.querySelectorAll(
-            '.user-link'
-        );
+        const elements = document.querySelectorAll('.user-link');
 
-        elements.forEach(el => {
+        elements.forEach((el) => {
             const currentUser = resolveUserForElement(el);
 
-            // Only apply when the element exposes an explicit username.
             if (!currentUser) {
                 if (el.dataset.injectedFor) clearInjected(el);
                 return;
@@ -208,7 +260,6 @@
 
             const player = playersById.get(currentUser);
 
-            // If username is not in remote targets, ensure no injected residue remains.
             if (!player) {
                 if (el.dataset.injectedFor) clearInjected(el);
                 return;
@@ -226,10 +277,8 @@
                 clearInjected(el);
             }
 
-            // name replace
             replaceName(el, player.displayName);
 
-            // badge
             el.querySelectorAll('.injected-badge').forEach((badge) => badge.remove());
             if (player.badge) {
                 const wrapper = document.createElement('span');
@@ -242,7 +291,6 @@
                 else el.prepend(badge);
             }
 
-            // flair (FULL SAFE URL SUPPORT)
             setFlair(el, player.flair);
 
             el.dataset.injectedFor = player.id;
@@ -258,11 +306,20 @@
         });
     }
 
+    function startRefreshLoop() {
+        setInterval(async () => {
+            await loadData();
+            inject();
+        }, REFRESH_MS);
+    }
+
     async function init() {
         await loadData();
         inject();
         observe();
+        startRefreshLoop();
     }
 
     init();
 })();
+
