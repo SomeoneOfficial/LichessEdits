@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Lichess Dynamic Badge + Name + Flair (Final Stable)
 // @namespace    http://tampermonkey.net/
-// @version      27.6
+// @version      27.9.2026
 // @description  Remote-controlled Lichess UI with fully safe parsing
 // @match        https://lichess.org/*
 // @updateURL    https://someoneofficial.github.io/LichessEdits/LichessFlairNameAndTitleChanger/LichessFlairNameTitleChange.js
